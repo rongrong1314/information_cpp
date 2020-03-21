@@ -8,7 +8,6 @@ function [var] = sensor_model(altitude)
 % Output:
 % var = variance associated with measurement
 
- % TODO(M):- Parametrise this.
-var = altitude/64;
+var = 0.05 .* (1 - exp(-0.2 .* altitude));
 
  end

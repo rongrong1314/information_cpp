@@ -37,14 +37,14 @@ inf_func = @infExact;
 mean_func = @meanConst;
 % Hyperparameters
 hyp.mean = 0.5;
-hyp.cov =  [1.3 0.5];
-hyp.lik =  2.2;
+hyp.cov =  [1.3 0.3];
+hyp.lik =  0.35;
 
  % First measurement location
-pos_env_first = [0, 0, 6];
+pos_env_init = [0, 0, 6];
 % Multi-resolution lattice
 lattice = create_lattice(map_parameters, planning_parameters, 25, 4);
-
+num_of_measurements = 20;
 %% Data %%
 % Generate (continuous) ground truth map.
 ground_truth_map = create_continuous_map(dim_x, dim_y, cluster_radius);
@@ -89,13 +89,6 @@ end
 Y_sigma = sqrt(diag(grid_map.P)');
 P_prior = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
 
- % Take an initial measurement.
-grid_map = take_measurement_at_point(pos_env_first, grid_map, ...
-    ground_truth_map, map_parameters, planning_parameters);
-Y_sigma = sqrt(diag(grid_map.P)');
-P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
-P_trace_init = trace(P_post);
-
 if (matlab_parameters.visualize)
 
     figure;
@@ -110,73 +103,96 @@ if (matlab_parameters.visualize)
     caxis([0, 1])
     title('Mean - prior')
     set(gca,'Ydir', 'Normal');
-
+   
     subplot(2, 4, 6)
     contourf(P_prior)
-    title(['Var. - prior. Trace = ', num2str(trace(P_prior), 5)])
+    title(['Var. Trace = ', num2str(trace(grid_map.P), 5)])
     set(gca,'Ydir','Normal');
 
+end
+
+% Take an initial measurement.
+grid_map = take_measurement_at_point(pos_env_init, grid_map, ...
+    ground_truth_map, map_parameters, planning_parameters);
+Y_sigma = sqrt(diag(grid_map.P)');
+P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
+P_trace_init = trace(P_post);
+
+if (matlab_parameters.visualize)
+    
     subplot(2, 4, 3)
     imagesc(grid_map.m)
     caxis([0, 1])
     title('Mean - after 1 meas.')
     set(gca,'Ydir', 'Normal');
-
+    
     subplot(2, 4, 7)
     contourf(P_post)
     title(['Var. Trace = ', num2str(trace(P_post), 5)])
     set(gca,'Ydir','Normal');
+    
+end
+
+
+P_trace_prev = P_trace_init;
+pos_env_prev = pos_env_init;
+pos_bests = pos_env_init;
+for k = 1:num_of_measurements-1
+    
+    % Initialise best solution found so far.
+    obj_max = -Inf;
+    pos_env_best = -Inf;
+    obj_lattice = zeros(size(lattice,1), num_of_measurements-1);
+
+    for i = 1:size(lattice, 1)
+
+        pos_env_eval = lattice(i, :);
+        grid_map_eval = take_measurement_at_point(pos_env_eval, grid_map, ...
+            ground_truth_map, map_parameters, planning_parameters);
+        P_trace = trace(grid_map_eval.P);
+
+        gain = P_trace_prev - P_trace;
+        %pdist获得两点之间的距离，小于10的替换成10
+        cost = max(pdist([pos_env_prev; pos_env_eval]), 10);
+        obj = gain/cost;
+        obj_lattice(i, k) = obj;
+
+        %disp(['Evaluating Candidate No. ', num2str(i), ': ', num2str(pos_env)]);
+        %disp(['Trace of P: ', num2str(trace(grid_map_eval.P))]);
+
+         % Update best solution.
+        if (obj > obj_max)
+            obj_max = obj;
+            pos_env_best = pos_env_eval;
+        end
+     end
+    % Take final measurement at best point.
+    pos_bests = [pos_bests;pos_env_best];
+    grid_map = take_measurement_at_point(pos_env_best, grid_map, ...
+        ground_truth_map, map_parameters, planning_parameters);
+    Y_sigma = sqrt(diag(grid_map.P)');
+    P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
+    
+    disp(['Taking Measurement ', num2str(k + 1), ' at: ', num2str(pos_env_best)]);
+    disp(['Trace of P: ', num2str(trace(grid_map.P))]);
+    
+    P_trace_prev = trace(grid_map.P);
+    pos_env_prev = pos_env_best;
 
 end
 
-%% Candidate Evalaution (Planning ;)) 
-% Initialise best solution found so far.
-P_trace_min = Inf;
-pos_env_best = -Inf;
-P_traces = zeros(size(lattice,1), 1);
+if (matlab_parameters.visualize)
 
- for i = 1:size(lattice, 1)
-
-    pos_env = lattice(i, :);
-    grid_map_eval = take_measurement_at_point(pos_env, grid_map, ...
-        ground_truth_map, map_parameters, planning_parameters);
-
-    Y_sigma = sqrt(diag(grid_map_eval.P)');
-    P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
-    P_traces(i) = trace(P_post);
-
-     disp(['Evaluating Candidate No. ', num2str(i), ': ', num2str(pos_env)]);
-    disp(['Trace of P: ', num2str(trace(P_post))]);
-
-     % Update best solution.
-    if (trace(P_post) < P_trace_min)
-        P_trace_min = trace(P_post);
-        pos_env_best = pos_env;
-    end
-
- end
-
- disp(['Best candidate: ', num2str(pos_env_best)]);
-disp(['Trace of P: ', num2str(P_trace_min)]);
-
- % Take final measurement at best point.
-grid_map = take_measurement_at_point(pos_env_best, grid_map, ...
-    ground_truth_map, map_parameters, planning_parameters);
-Y_sigma = sqrt(diag(grid_map.P)');
-P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
-
- if (matlab_parameters.visualize)
-
-     subplot(2, 4, 4)
+    subplot(2, 4, 4)
     imagesc(grid_map.m)
     caxis([0, 1])
     title(['Mean - after 2 meas.'])
     set(gca,'Ydir','Normal');
     colorbar;
 
-     subplot(2, 4, 8)
+    subplot(2, 4, 8)
     contourf(P_post)
-    title(['Var. Trace = ', num2str(trace(P_post), 5)])
+    title(['Var. Trace = ', num2str(trace(grid_map.P), 5)])
     set(gca,'Ydir','Normal');
     c = colorbar;
     P_climits = get(c, 'Limits');
@@ -190,12 +206,12 @@ P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
 
  end
 
- % Plot the objective values on the lattice.
+% Plot the objective values on the lattice.
 if (visualize_lattice)
 
-     figure;
+    figure;
     scatter3(lattice(:,1), lattice(:,2), lattice(:,3), 46, ...
-      P_trace_init - P_traces, 'filled');
+      obj_lattice(:, k), 'filled');
     c = colorbar;
     ylabel(c, 'Info. value')
     xlabel('x (m)')
@@ -203,5 +219,12 @@ if (visualize_lattice)
     zlabel('z (m)')
     title('Lattice info. evaluation')
     grid minor
-
+    hold on;
+    %画路径
+    pos_bests_x = reshape(pos_bests(:,1),1,size(pos_bests,1));
+    pos_bests_y = reshape(pos_bests(:,2),1,size(pos_bests,1));
+    pos_bests_z = reshape(pos_bests(:,3),1,size(pos_bests,1));
+    plot3(pos_bests_x,pos_bests_y,pos_bests_z,'Marker','o');
+    
+    
  end 
