@@ -58,9 +58,6 @@ Z =  [reshape(mesh_x, numel(mesh_x), 1), reshape(mesh_y, numel(mesh_y), 1)];
 % Generate grid map.生成观察模型图
 grid_map_prior.m = 0.5*ones(size(ground_truth_map));
 
-sn2=exp(2*hyp.lik);
-K = feval(cov_func{:},hyp.cov,X_ref);
-KplusR = K+ sn2*eye(length(K));
 
 
 
@@ -78,15 +75,15 @@ alpha = post.alpha;
 L = post.L; 
 sW = post.sW; 
 %kss = feval(cov_func{:}, hyp.cov, Z, 'diag');
-Kss = real(feval(cov_func{:}, hyp.cov, Z));
+kss = real(feval(cov_func{:}, hyp.cov, Z, 'diag'));
 Ks = feval(cov_func{:}, hyp.cov, X_ref, Z);
 Lchol = isnumeric(L) && all(all(tril(L,-1)==0)&diag(L)'>0&isreal(diag(L))');
 if Lchol    % L contains chol decomp => use Cholesky parameters (alpha,sW,L)
    V  = L'\(sW.*Ks);
-   grid_map_prior.P = diag(Kss) - V'*V;                       % predictive variances
+   grid_map_prior.P = diag(kss) - V'*V;                       % predictive variances
 else                % L is not triangular => use alternative parametrisation
   if isnumeric(L), LKs = L*(Ks); else LKs = L(Ks); end    % matrix or callback
-  grid_map_prior.P = diag(Kss) + Ks'*LKs;                    % predictive variances
+  grid_map_prior.P = diag(kss) + Ks'*LKs;                    % predictive variances
 end
 
 % Extract variance map.

@@ -19,15 +19,16 @@ z = reshape(za,[],1);
 R = diag(reshape(Ra,[],1));
 %
 H = zeros(r*s,m*n);
-j=1;
 for i=1:length(ind)
-    H(j,ind(i)) = 1;
-    j=j+1;
+    H(i,ind(i)) = 1;
 end
 %x为观测矩阵，z为观测值，H为状态观测矩阵，是一个单位矩阵，z-H*x为测量余量
 %根据观测值预测
 [x,Pf] = KF_update_cholesky(x,P,z-H*x,R,H);
 
 xf = reshape(x,m,n);
+% Debugging
+disp(['Matrix trace before update: ', num2str(trace(P))])
+disp(['Matrix trace after update: ', num2str(trace(Pf))])
 
 end
