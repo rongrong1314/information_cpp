@@ -3,9 +3,9 @@ function grid_map = ...
     grid_map, submap_coordinates, planning_parameters)
 % Updates grid map at a UAV position using measurements
 % received using height-dependent sensor model.
+
 %% Update occupancy grid map - weeds.
 % Compute variance of measurements.
-%测量误差作为方差，老版本：草：传感器模型，非草：0.001
 var = ones(size(submap))*sensor_model(pos_env(3));
 [submap_ind_x, submap_ind_y] = meshgrid([submap_coordinates.xl:submap_coordinates.xr],...
         [submap_coordinates.yd:submap_coordinates.yu]);
@@ -13,7 +13,6 @@ submap_ind = sub2ind(size(grid_map.m),reshape(submap_ind_y,[],1),reshape(submap_
 %% Perform correlated fusion.
 [grid_map.m, grid_map.P] = fuse_measurements(grid_map.m, grid_map.P, ...
     submap, var, submap_ind);
-end
 %%
 % [w_win_j, w_win_i] = find(submap == 1);
 % 
@@ -61,4 +60,6 @@ end
 % [grid_map.m, grid_map.P] = fuse_measurements(grid_map.m, grid_map.P, ...
 %     submap,var, w_ind_global);
 
+
+end
 

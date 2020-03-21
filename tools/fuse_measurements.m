@@ -10,9 +10,6 @@ function [xf,Pf] = fuse_measurements(xa,P,za,Ra, ind)
 % Outputs:
 % xf: map with fused measurements
 % Pf: covariance with fused measurements
-% ---
-% Teresa Vidal Calleja 12/2016
-%
 %¾ùÖµ
 [m,n] = size(xa);
 x = reshape(xa,[],1);
