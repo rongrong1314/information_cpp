@@ -7,7 +7,7 @@ function trajectory = solve_trajectory(trajectory)
 
 %for i = 1 : trajectory.num_elements
   for j = 1 : trajectory.K
-    coefficients = solve_problem(trajectory.vertices_structs(j));
+    coefficients = solve_problem(trajectory.vertices_structs(j));%计算各维数多项式轨迹参数
     % Split up the coefficients into segments.
     for i = 1 : trajectory.num_elements-1
       start_index = (i-1) * (trajectory.N + 1) + 1;

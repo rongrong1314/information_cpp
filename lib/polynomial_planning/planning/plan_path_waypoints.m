@@ -29,7 +29,7 @@ end
 % Estimate segment times.
 trajectory = estimate_trajectory_times(trajectory, max_vel, max_acc);
 
-% Now solve the problem...
+% Now solve the problem...计算多项式轨迹方程
 trajectory = solve_trajectory(trajectory);
 
 end

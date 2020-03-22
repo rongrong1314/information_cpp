@@ -6,7 +6,7 @@ total_time = 0;
 for i = 1 : length(trajectory.segments)
   total_time = total_time + trajectory.segments(i).time;
 end
-num_samples = round(total_time/dt);
+num_samples = round(total_time/dt);%算出采样次数
 current_time = 0;
 
 p = zeros(num_samples, trajectory.K);
@@ -32,10 +32,10 @@ for i = 1 : length(trajectory.segments)
   % Iterate over all dimensions.
   for j = 1 : trajectory.K
     % Need to reverse order. :)
-    p_coeffs = flipud(trajectory.segments(i).coefficients(:, j));
-    v_coeffs = polyder(p_coeffs);
-    a_coeffs = polyder(v_coeffs);
-    pos1 = polyval(p_coeffs, t1);
+    p_coeffs = flipud(trajectory.segments(i).coefficients(:, j));%翻转
+    v_coeffs = polyder(p_coeffs);%求导，速度
+    a_coeffs = polyder(v_coeffs);%加速度
+    pos1 = polyval(p_coeffs, t1);%计算多项式的值
     vel1 = polyval(v_coeffs, t1);
     accel1 = polyval(a_coeffs, t1);
     p(p_ind:p_ind + size(pos1, 2)-1, j) = pos1;

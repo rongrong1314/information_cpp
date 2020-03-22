@@ -1,4 +1,5 @@
-function [trajectory_out, metrics] =  evaluate_continuous(map, start_point, goal_point, visualize, num_segments, random_perturb)
+function [trajectory_out, metrics] =  evaluate_continuous(map, start_point, goal_point, ...
+    visualize, num_segments, random_perturb)
 if (nargin < 5)
   num_segments = 1;
 end

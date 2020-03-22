@@ -1,15 +1,16 @@
+clc;clear all;close all;
 map_size = 5;
 tree_size = 1;
 % Nominal tree density per map.
-tree_density = [5:2:25];
+tree_density = [5:2:25];%密度
 trials_per_map = 10;
 
 % Select start and end points (always the same per trial).
-start_point = [0.5 0.5];
-goal_point = [4.5, 4.5];
+start_point = [0.5 0.5];%起点
+goal_point = [4.5, 4.5];%终点
 
 % Select some numbers for PTO evals.
-num_segments = 1:5;
+num_segments = 1:5;%段数
 random_restarts = 0:1;
 
 % How many restarts to do when doing restarts, and choose best.
@@ -25,7 +26,7 @@ clear trials;
 for i = 1:length(tree_density)
   for j = 1:trials_per_map
    % Generate a map.
-   rng(trial_number);
+   rng(trial_number);%使 rand、randi 和 randn 生成可预测的数字序列
    map = create_forest_map(1, tree_density(i), map_size, tree_size);
 
    % Figure out if this is an okay map.
