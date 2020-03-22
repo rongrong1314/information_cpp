@@ -1,18 +1,28 @@
 function grid_map = ...
-    update_map_with_correlation(pos_env, submap, ...
+    update_map_with_correlation(pos, submap, ...
     grid_map, submap_coordinates, planning_parameters)
 % Updates grid map at a UAV position using measurements
 % received using height-dependent sensor model.
 %% Update occupancy grid map - weeds.
 % Compute variance of measurements.
 %测量误差作为方差，老版本：草：传感器模型，非草：0.001
-var = ones(size(submap))*sensor_model(pos_env(3));
-[submap_ind_x, submap_ind_y] = meshgrid([submap_coordinates.xl:submap_coordinates.xr],...
-        [submap_coordinates.yd:submap_coordinates.yu]);
-submap_ind = sub2ind(size(grid_map.m),reshape(submap_ind_y,[],1),reshape(submap_ind_x,[],1));
-%% Perform correlated fusion.
-[grid_map.m, grid_map.P] = fuse_measurements(grid_map.m, grid_map.P, ...
-    submap, var, submap_ind);
+var = ones(size(submap))*sensor_model(pos(3), planning_parameters);
+R = diag(reshape(var,[],1));
+% Create measurement model.
+H = construct_H(grid_map.m, submap, submap_coordinates, pos(3));
+
+%% Correlated Fusion
+% Obtain maximum aposteriori estimate using Bayesian Fusion.
+x = reshape(grid_map.m,[],1);
+z = reshape(submap,[],1);
+P = grid_map.P;
+
+%x为观测矩阵，z为观测值，H为状态观测矩阵，是一个单位矩阵，z-H*x为测量余量
+%根据观测值预测
+[x,Pf] = KF_update_cholesky(x,P,z-H*x,R,H);
+grid_map.m = reshape(x, size(grid_map.m,1), size(grid_map.m,2));
+grid_map.P = Pf;
+
 end
 %%
 % [w_win_j, w_win_i] = find(submap == 1);

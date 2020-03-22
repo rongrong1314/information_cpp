@@ -1,4 +1,4 @@
-function [var] = sensor_model(altitude)
+function [var] = sensor_model(altitude, planning_parameters)
 % Inverse model of sensor to detect % vegetation cover in environment.
 % (Height-dependant)
 %
@@ -8,6 +8,7 @@ function [var] = sensor_model(altitude)
 % Output:
 % var = variance associated with measurement
 
-var = 0.05 .* (1 - exp(-0.2 .* altitude));
+var = planning_parameters.sensor_coeff_A .* ...
+    (1 - exp(-planning_parameters.sensor_coeff_B .* altitude));
 
  end

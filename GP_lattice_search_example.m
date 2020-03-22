@@ -1,19 +1,28 @@
-clear all; close all; clc;
+% This example is the same as GP_lattice_example.m, except that
+% potential measurement sites are evaluated based on predicted covariance
+% reduction.
 
-%% Parameters %%
+ clear all; close all; clc;
+
+ %% Parameters %%
+
 % Environment
 cluster_radius = 3;
 % Dimensions [m]
 dim_x_env = 30;
 dim_y_env = 30;
 
- % Camera fields of view (FoV)
+% Coefficients for the exponential height-dependant sensor variance model
+% var = A * (1 - e^(-B * height))
+planning_parameters.sensor_coeff_A = 0.05;
+planning_parameters.sensor_coeff_B = 0.2;
+% Camera fields of view (FoV)
 planning_parameters.sensor_fov_angle_x = 60;
 planning_parameters.sensor_fov_angle_y = 60;
 planning_parameters.min_height = 1;
 planning_parameters.max_height = 26;
 
-% Map resolution [m/cell]
+ % Map resolution [m/cell]
 map_parameters.resolution = 0.75;
 % Map dimensions [cells]
 map_parameters.dim_x = dim_x_env/map_parameters.resolution;
@@ -29,6 +38,7 @@ predict_dim_y = dim_y*1;
 
 matlab_parameters.visualize = 1;
 visualize_lattice = 1;
+visualize_path = 1;
 
  % Gaussian Process
 cov_func = {'covMaterniso', 3};
@@ -44,8 +54,10 @@ hyp.lik =  0.35;
 pos_env_init = [0, 0, 6];
 % Multi-resolution lattice
 lattice = create_lattice(map_parameters, planning_parameters, 25, 4);
-num_of_measurements = 20;
-%% Data %%
+% Number of measurements to take (including initial one)
+num_of_measurements = 10;
+
+ %% Data %%
 % Generate (continuous) ground truth map.
 ground_truth_map = create_continuous_map(dim_x, dim_y, cluster_radius);
 [mesh_x,mesh_y] = meshgrid(linspace(1,dim_x,dim_x), linspace(1,dim_y,dim_y));
@@ -59,19 +71,17 @@ Z =  [reshape(mesh_x, numel(mesh_x), 1), reshape(mesh_y, numel(mesh_y), 1)];
  % Generate grid map.
 grid_map.m = 0.5*ones(size(ground_truth_map));
 
-
  %% Measurement and Inference %%
 % Generate prior map.
 Y = reshape(grid_map.m,[],1);
-
- % ymu, ys: mean and covariance for output
+% ymu, ys: mean and covariance for output
 % fmu, fs: mean and covariance for latent variables
 % post: struct representation of the (approximate) posterior
 [ymu, ys, fmu, fs, ~ , post] = gp(hyp, inf_func, mean_func, cov_func, lik_func, ...
     X_ref, Y, Z);
 ymu = reshape(ymu, predict_dim_y, predict_dim_x);
 
-alpha = post.alpha;
+ alpha = post.alpha;
 L = post.L; 
 sW = post.sW;
 Kss = real(feval(cov_func{:}, hyp.cov, Z));
@@ -85,79 +95,83 @@ if Lchol    % L contains chol decomp => use Cholesky parameters (alpha,sW,L)
   grid_map.P = Kss + Ks'*LKs;                    % predictive variances
 end
 
-% Extract variance map (diagonal elements).
+
+ % Extract variance map (diagonal elements).
 Y_sigma = sqrt(diag(grid_map.P)');
 P_prior = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
 
-if (matlab_parameters.visualize)
+ if (matlab_parameters.visualize)
 
-    figure;
+     figure;
     subplot(2, 4, 1)
     imagesc(ground_truth_map)
     caxis([0, 1])
     title('Ground truth map')
     set(gca,'Ydir', 'Normal');
 
-    subplot(2, 4, 2)
+     subplot(2, 4, 2)
     imagesc(ymu)
     caxis([0, 1])
     title('Mean - prior')
     set(gca,'Ydir', 'Normal');
-   
-    subplot(2, 4, 6)
+
+     subplot(2, 4, 6)
     contourf(P_prior)
+    title(['Var. Trace = ', num2str(trace(grid_map.P), 5)])
+    set(gca,'Ydir','Normal');
+
+ end
+
+ % Take an initial measurement.
+grid_map = take_measurement_at_point(pos_env_init, grid_map, ...
+    ground_truth_map, map_parameters, planning_parameters);
+Y_sigma = sqrt(diag(grid_map.P)');
+P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
+P_trace_init = trace(grid_map.P);
+
+if (matlab_parameters.visualize)
+
+     subplot(2, 4, 3)
+    imagesc(grid_map.m)
+    caxis([0, 1])
+    title('Mean - init.')
+    set(gca,'Ydir', 'Normal');
+
+     subplot(2, 4, 7)
+    contourf(P_post)
     title(['Var. Trace = ', num2str(trace(grid_map.P), 5)])
     set(gca,'Ydir','Normal');
 
 end
 
-% Take an initial measurement.
-grid_map = take_measurement_at_point(pos_env_init, grid_map, ...
-    ground_truth_map, map_parameters, planning_parameters);
-Y_sigma = sqrt(diag(grid_map.P)');
-P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
-P_trace_init = trace(P_post);
-
-if (matlab_parameters.visualize)
-    
-    subplot(2, 4, 3)
-    imagesc(grid_map.m)
-    caxis([0, 1])
-    title('Mean - after 1 meas.')
-    set(gca,'Ydir', 'Normal');
-    
-    subplot(2, 4, 7)
-    contourf(P_post)
-    title(['Var. Trace = ', num2str(trace(P_post), 5)])
-    set(gca,'Ydir','Normal');
-    
-end
-
-
+%% Candidate Evalaution (Planning ;)) %%
+%lattice = lattice(1:50, :);
 P_trace_prev = P_trace_init;
 pos_env_prev = pos_env_init;
-pos_bests = pos_env_init;
-for k = 1:num_of_measurements-1
-    
-    % Initialise best solution found so far.
+
+path = [];
+
+ for k = 1:num_of_measurements-1
+
+     % Initialise best solution so far.
     obj_max = -Inf;
     pos_env_best = -Inf;
     obj_lattice = zeros(size(lattice,1), num_of_measurements-1);
-
-    for i = 1:size(lattice, 1)
+      %只是简化了计算，这部分之间算了迹
+     for i = 1:size(lattice, 1)
 
         pos_env_eval = lattice(i, :);
-        grid_map_eval = take_measurement_at_point(pos_env_eval, grid_map, ...
-            ground_truth_map, map_parameters, planning_parameters);
+        grid_map_eval = predict_map_update(pos_env_eval, grid_map, ...
+            map_parameters, planning_parameters);
         P_trace = trace(grid_map_eval.P);
 
         gain = P_trace_prev - P_trace;
-        %pdist获得两点之间的距离，小于10的替换成10
-        cost = max(pdist([pos_env_prev; pos_env_eval]), 10);
+        % Limit the min. distance between measurements.
+        cost = max(pdist([pos_env_prev; pos_env_eval]), 5);
         obj = gain/cost;
         obj_lattice(i, k) = obj;
 
-        %disp(['Evaluating Candidate No. ', num2str(i), ': ', num2str(pos_env)]);
+        %disp(['Evaluating Candidate No. ', num2str(i), ': ', num2str(pos_env_eval)]);
         %disp(['Trace of P: ', num2str(trace(grid_map_eval.P))]);
 
          % Update best solution.
@@ -165,32 +179,34 @@ for k = 1:num_of_measurements-1
             obj_max = obj;
             pos_env_best = pos_env_eval;
         end
+
      end
-    % Take final measurement at best point.
-    pos_bests = [pos_bests;pos_env_best];
+
+     % Take final measurement at best point.
     grid_map = take_measurement_at_point(pos_env_best, grid_map, ...
         ground_truth_map, map_parameters, planning_parameters);
     Y_sigma = sqrt(diag(grid_map.P)');
     P_post = reshape(2*Y_sigma,predict_dim_y,predict_dim_x);
-    
     disp(['Taking Measurement ', num2str(k + 1), ' at: ', num2str(pos_env_best)]);
     disp(['Trace of P: ', num2str(trace(grid_map.P))]);
-    
-    P_trace_prev = trace(grid_map.P);
+
+     P_trace_prev = trace(grid_map.P);
     pos_env_prev = pos_env_best;
 
-end
+     path = [path; pos_env_best];
 
-if (matlab_parameters.visualize)
+ end
 
-    subplot(2, 4, 4)
+ if (matlab_parameters.visualize)
+
+     subplot(2, 4, 4)
     imagesc(grid_map.m)
     caxis([0, 1])
-    title(['Mean - after 2 meas.'])
+    title('Mean - final')
     set(gca,'Ydir','Normal');
     colorbar;
 
-    subplot(2, 4, 8)
+     subplot(2, 4, 8)
     contourf(P_post)
     title(['Var. Trace = ', num2str(trace(grid_map.P), 5)])
     set(gca,'Ydir','Normal');
@@ -198,7 +214,7 @@ if (matlab_parameters.visualize)
     P_climits = get(c, 'Limits');
     set(gcf, 'Position', [113, 279, 2402, 800]);
 
-     % Scale colours of variance plots.
+     % Scale variance plot colours.
     subplot(2, 4, 6)
     caxis(P_climits)
     subplot(2, 4, 7)
@@ -206,10 +222,10 @@ if (matlab_parameters.visualize)
 
  end
 
-% Plot the objective values on the lattice.
+ % Plot the (final) informative objective values on the lattice.
 if (visualize_lattice)
 
-    figure;
+     figure;
     scatter3(lattice(:,1), lattice(:,2), lattice(:,3), 46, ...
       obj_lattice(:, k), 'filled');
     c = colorbar;
@@ -219,12 +235,10 @@ if (visualize_lattice)
     zlabel('z (m)')
     title('Lattice info. evaluation')
     grid minor
-    hold on;
-    %画路径
-    pos_bests_x = reshape(pos_bests(:,1),1,size(pos_bests,1));
-    pos_bests_y = reshape(pos_bests(:,2),1,size(pos_bests,1));
-    pos_bests_z = reshape(pos_bests(:,3),1,size(pos_bests,1));
-    plot3(pos_bests_x,pos_bests_y,pos_bests_z,'Marker','o');
-    
-    
- end 
+
+ end
+
+ if (visualize_path)
+     figure;
+     plot_path(path);
+ end
